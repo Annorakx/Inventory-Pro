@@ -105,3 +105,21 @@ def aprobar_producto(
     db.commit()
     
     return {"mensaje": f"Producto '{producto.name}' aprobado exitosamente"}
+
+@app.delete("/api/productos/{producto_id}")
+def eliminar_producto(
+    producto_id: int, 
+    db: Session = Depends(get_db), 
+    # El mismo guardia estricto que usamos para aprobar
+    current_user: dict = Depends(security.require_supervisor) 
+):
+    """Elimina un producto de la base de datos de forma permanente"""
+    
+    producto = db.query(models.Product).filter(models.Product.id == producto_id).first()
+    if not producto:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+        
+    db.delete(producto)
+    db.commit()
+    
+    return {"mensaje": f"Producto eliminado exitosamente"}
