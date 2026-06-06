@@ -1,33 +1,45 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Save, PlusCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { ArrowLeft, Save, Edit } from "lucide-react";
 import { apiCall } from "../services/api";
 
-export default function ProponerProducto() {
+export default function EditarProducto() {
   const navigate = useNavigate();
-  // Estado para guardar lo que el usuario escribe
+  const location = useLocation();
+  const productoAEditar = location.state?.producto;
+
+  // 1. REGLA DE ORO DE REACT: Los Hooks siempre se declaran arriba del todo, antes de cualquier "return" condicional
+  // Usamos el operador ?. y valores por defecto para que no falle si el producto inicialmente no se ha cargado
   const [formData, setFormData] = useState({
-    barcode: "",
-    name: "",
-    category: "",
-    price: "",
-    stock: "",
-    min_stock: "5", // Valor por defecto sugerido
+    barcode: productoAEditar?.barcode || "",
+    name: productoAEditar?.name || "",
+    category: productoAEditar?.category || "",
+    price: productoAEditar?.price || "",
+    stock: productoAEditar?.stock || "",
+    min_stock: productoAEditar?.min_stock || "",
   });
+
   const [mensaje, setMensaje] = useState({ tipo: "", texto: "" });
 
-  // Función que actualiza el estado cada vez que se teclea algo
+  // 2. Redirección segura dentro de un useEffect si intentan ingresar directo por URL sin un producto seleccionado
+  useEffect(() => {
+    if (!productoAEditar) {
+      navigate("/dashboard");
+    }
+  }, [productoAEditar, navigate]);
+
+  // Si no hay producto válido en el estado de navegación, frenamos el renderizado aquí abajo
+  if (!productoAEditar) return null;
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  // Función que se ejecuta al darle al botón de Guardar
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMensaje({ tipo: "", texto: "" });
 
     try {
-      // Formateamos los datos para que FastAPI no se queje (ej. texto a número)
       const payload = {
         ...formData,
         price: parseFloat(formData.price),
@@ -35,27 +47,27 @@ export default function ProponerProducto() {
         min_stock: parseInt(formData.min_stock),
       };
 
-      const respuesta = await apiCall("/api/productos/proponer", {
-        method: "POST",
+      const respuesta = await apiCall(`/api/productos/${productoAEditar.id}`, {
+        method: "PUT",
         body: JSON.stringify(payload),
       });
 
       if (respuesta.ok) {
         setMensaje({
           tipo: "exito",
-          texto: "¡Producto propuesto! Redirigiendo al panel...",
+          texto: "¡Inventario actualizado! Redirigiendo...",
         });
-        // Si todo sale bien, lo devolvemos al Dashboard después de 2 segundos
-        setTimeout(() => navigate("/dashboard"), 2000);
+        setTimeout(() => navigate("/dashboard"), 1500);
       } else {
         const errorData = await respuesta.json();
         setMensaje({
           tipo: "error",
-          texto: errorData.detail || "Error al registrar el producto.",
+          texto: errorData.detail || "Error al actualizar.",
         });
       }
     } catch (error) {
-      console.error("Detalle del error:", error); // <- Agregas esta línea para usar la variable
+      // Al usar console.error aquí solucionamos la advertencia del linter de variable no utilizada
+      printConsoleError(error);
       setMensaje({
         tipo: "error",
         texto: "Error de conexión con el servidor.",
@@ -63,20 +75,25 @@ export default function ProponerProducto() {
     }
   };
 
+  // Función auxiliar interna para no repetir código de consola
+  function printConsoleError(err) {
+    console.error("Detalle del error en la petición de actualización:", err);
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-2xl mx-auto bg-gray-800 rounded-xl border border-gray-700 shadow-2xl overflow-hidden">
         {/* Cabecera */}
         <div className="bg-gray-900/50 p-6 border-b border-gray-700 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <PlusCircle className="w-7 h-7 text-cyan-400" />
-            <h2 className="text-xl font-bold">Proponer Nuevo Producto</h2>
+            <Edit className="w-7 h-7 text-blue-400" />
+            <h2 className="text-xl font-bold">Editar Producto</h2>
           </div>
           <button
             onClick={() => navigate("/dashboard")}
             className="text-gray-400 hover:text-white transition-colors flex items-center gap-2 text-sm font-medium"
           >
-            <ArrowLeft className="w-4 h-4" /> Volver al Dashboard
+            <ArrowLeft className="w-4 h-4" /> Cancelar
           </button>
         </div>
 
@@ -89,7 +106,7 @@ export default function ProponerProducto() {
           </div>
         )}
 
-        {/* Formulario */}
+        {/* Formulario Pre-llenado */}
         <div className="p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-2 gap-6">
@@ -103,8 +120,7 @@ export default function ProponerProducto() {
                   name="barcode"
                   value={formData.barcode}
                   onChange={handleChange}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-cyan-500 outline-none transition-all"
-                  placeholder="Ej. 750123456789"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 />
               </div>
               <div>
@@ -117,8 +133,7 @@ export default function ProponerProducto() {
                   name="category"
                   value={formData.category}
                   onChange={handleChange}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-cyan-500 outline-none transition-all"
-                  placeholder="Ej. Lácteos, Snacks..."
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 />
               </div>
             </div>
@@ -133,8 +148,7 @@ export default function ProponerProducto() {
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-cyan-500 outline-none transition-all"
-                placeholder="Ej. Leche Deslactosada 1L"
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               />
             </div>
 
@@ -151,13 +165,12 @@ export default function ProponerProducto() {
                   name="price"
                   value={formData.price}
                   onChange={handleChange}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-cyan-500 outline-none transition-all"
-                  placeholder="0.00"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-400 mb-2">
-                  Stock Inicial
+                  Stock Actual
                 </label>
                 <input
                   required
@@ -166,8 +179,7 @@ export default function ProponerProducto() {
                   name="stock"
                   value={formData.stock}
                   onChange={handleChange}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-cyan-500 outline-none transition-all"
-                  placeholder="0"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 />
               </div>
               <div>
@@ -181,7 +193,7 @@ export default function ProponerProducto() {
                   name="min_stock"
                   value={formData.min_stock}
                   onChange={handleChange}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-cyan-500 outline-none transition-all"
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 />
               </div>
             </div>
@@ -189,9 +201,9 @@ export default function ProponerProducto() {
             <div className="pt-4">
               <button
                 type="submit"
-                className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 px-4 rounded-lg transition-colors flex justify-center items-center gap-2"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-4 rounded-lg transition-colors flex justify-center items-center gap-2"
               >
-                <Save className="w-5 h-5" /> Enviar Propuesta
+                <Save className="w-5 h-5" /> Guardar Cambios
               </button>
             </div>
           </form>

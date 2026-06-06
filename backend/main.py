@@ -123,3 +123,29 @@ def eliminar_producto(
     db.commit()
     
     return {"mensaje": f"Producto eliminado exitosamente"}
+
+@app.put("/api/productos/{producto_id}")
+def actualizar_producto(
+    producto_id: int, 
+    producto_actualizado: ProductoNuevo, # Reutilizamos el molde que ya teníamos
+    db: Session = Depends(get_db), 
+    current_user: dict = Depends(security.require_supervisor) # Solo jefes editan
+):
+    """Actualiza todos los datos de un producto existente"""
+    
+    producto = db.query(models.Product).filter(models.Product.id == producto_id).first()
+    if not producto:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+        
+    # Actualizamos los campos
+    producto.barcode = producto_actualizado.barcode
+    producto.name = producto_actualizado.name
+    producto.category = producto_actualizado.category
+    producto.price = producto_actualizado.price
+    producto.stock = producto_actualizado.stock
+    producto.min_stock = producto_actualizado.min_stock
+    
+    db.commit()
+    db.refresh(producto)
+    
+    return {"mensaje": "Producto actualizado exitosamente", "producto": producto}

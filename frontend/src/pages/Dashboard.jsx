@@ -9,6 +9,7 @@ import {
   Trash2,
   Search,
   Filter,
+  Edit,
 } from "lucide-react";
 import { apiCall } from "../services/api";
 
@@ -18,7 +19,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [errorAccion, setErrorAccion] = useState("");
 
-  // Estados para los filtros en tiempo real
+  // Estados para los filtros en tiempo real (El Radar)
   const [busqueda, setBusqueda] = useState("");
   const [categoriaSeleccionada, setCategoriaSeleccionada] = useState("");
 
@@ -37,7 +38,7 @@ export default function Dashboard() {
     };
 
     cargarInventario();
-  }, []);
+  }, []); // Manteniendo la función dentro cumplimos con las mejores prácticas de React
 
   // Función para aprobar un producto pendiente
   const handleAprobar = async (id) => {
@@ -48,6 +49,7 @@ export default function Dashboard() {
       });
 
       if (respuesta.ok) {
+        // Optimistic UI: Actualizamos el estado local de inmediato
         setProductos(
           productos.map((p) =>
             p.id === id ? { ...p, status: "aprobado" } : p,
@@ -82,6 +84,7 @@ export default function Dashboard() {
       });
 
       if (respuesta.ok) {
+        // Filtramos el producto borrado del estado para que desaparezca al instante
         setProductos(productos.filter((p) => p.id !== id));
       } else {
         const dataErr = await respuesta.json();
@@ -98,11 +101,11 @@ export default function Dashboard() {
     navigate("/");
   };
 
-  // --- LÓGICA DEL RADAR (FILTRADO) ---
-  // 1. Extraemos las categorías únicas que existen actualmente en los productos
+  // --- LÓGICA DE FILTRADO EN TIEMPO REAL ---
+  // Extraemos las categorías únicas disponibles en los productos actuales
   const categoriasUnicas = [...new Set(productos.map((p) => p.category))];
 
-  // 2. Filtramos la lista en memoria según lo que el usuario escribe o selecciona
+  // Filtramos la lista en memoria según la barra de búsqueda y el selector
   const productosFiltrados = productos.filter((item) => {
     const coincideBusqueda =
       item.name.toLowerCase().includes(busqueda.toLowerCase()) ||
@@ -126,6 +129,7 @@ export default function Dashboard() {
             </h1>
           </div>
 
+          {/* Botones de acción general */}
           <div className="flex gap-4">
             <button
               onClick={() => navigate("/proponer")}
@@ -152,7 +156,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* SECCIÓN DEL RADAR: CONTROLES DE BÚSQUEDA Y FILTRO */}
+        {/* CONTROLES DE BÚSQUEDA Y FILTRO */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           {/* Barra de Búsqueda */}
           <div className="md:col-span-2 relative flex items-center">
@@ -181,7 +185,6 @@ export default function Dashboard() {
                 </option>
               ))}
             </select>
-            {/* Pequeña flecha personalizada para el select */}
             <div className="absolute right-4 pointer-events-none text-gray-500">
               ▼
             </div>
@@ -256,6 +259,7 @@ export default function Dashboard() {
                     </td>
                     <td className="p-4 text-center">
                       <div className="flex items-center justify-center gap-2">
+                        {/* Botón Aprobar (Solo si el producto no está aprobado) */}
                         {item.status !== "aprobado" &&
                           item.status !== "approved" && (
                             <button
@@ -267,6 +271,18 @@ export default function Dashboard() {
                             </button>
                           )}
 
+                        {/* Botón Editar (Viaja a la ruta llevando los datos del producto en el estado de navegación) */}
+                        <button
+                          onClick={() =>
+                            navigate("/editar", { state: { producto: item } })
+                          }
+                          className="inline-flex items-center gap-1 bg-blue-600/80 hover:bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-md"
+                          title="Editar"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+
+                        {/* Botón Eliminar */}
                         <button
                           onClick={() => handleEliminar(item.id)}
                           className="inline-flex items-center gap-1 bg-red-600/80 hover:bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors shadow-md"
