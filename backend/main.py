@@ -54,7 +54,7 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         data={"sub": user.email, "role": user.role}
     )
     
-    # 4. Entregar el pase VIP
+    # 4. Entregar el Token
     return {"access_token": access_token, "token_type": "bearer"}
 
 @app.get("/api/inventario")
@@ -103,6 +103,15 @@ def aprobar_producto(
         
     producto.status = "aprobado"
     db.commit()
+
+    # REGISTRO EN BITÁCORA
+    registrar_auditoria(
+        db, 
+        username=current_user["email"], 
+        action="APROBACIÓN", 
+        product_name=producto.name, 
+        details="Estado cambiado de PENDIENTE a APROBADO"
+    )
     
     return {"mensaje": f"Producto '{producto.name}' aprobado exitosamente"}
 
@@ -118,9 +127,21 @@ def eliminar_producto(
     producto = db.query(models.Product).filter(models.Product.id == producto_id).first()
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    # GUARDAMOS EL NOMBRE ANTES DE DESTRUIRLO
+    producto_nombre = producto.name
         
     db.delete(producto)
     db.commit()
+
+    # REGISTRO EN BITÁCORA
+    registrar_auditoria(
+        db, 
+        username=current_user["email"], 
+        action="ELIMINACIÓN", 
+        product_name=producto_nombre, 
+        details="Producto removido permanentemente de la base de datos"
+    )
     
     return {"mensaje": f"Producto eliminado exitosamente"}
 
@@ -136,6 +157,9 @@ def actualizar_producto(
     producto = db.query(models.Product).filter(models.Product.id == producto_id).first()
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    # Armamos el texto del detalle antes de modificar nada
+    detalles_cambio = f"Precio: ${producto.price} -> ${producto_actualizado.price} | Stock: {producto.stock} -> {producto_actualizado.stock}"
         
     # Actualizamos los campos
     producto.barcode = producto_actualizado.barcode
@@ -147,5 +171,34 @@ def actualizar_producto(
     
     db.commit()
     db.refresh(producto)
+
+    # REGISTRO EN BITÁCORA
+    registrar_auditoria(
+        db, 
+        username=current_user["email"], 
+        action="EDICIÓN", 
+        product_name=producto.name, 
+        details=detalles_cambio
+    )
     
     return {"mensaje": "Producto actualizado exitosamente", "producto": producto}
+
+def registrar_auditoria(db: Session, username: str, action: str, product_name: str, details: str):
+    """Inserta de forma automática un registro de auditoría en la base de datos"""
+    log_entry = models.AuditLog(
+        username=username,
+        action=action,
+        product_name=product_name,
+        details=details
+    )
+    db.add(log_entry)
+    db.commit()
+
+@app.get("/api/auditoria")
+def obtener_logs_auditoria(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(security.require_supervisor) # Restringido a Admin
+):
+    """Retorna el historial completo de la bitácora ordenado del más reciente al más antiguo"""
+    logs = db.query(models.AuditLog).order_by(models.AuditLog.timestamp.desc()).all()
+    return {"logs": logs}

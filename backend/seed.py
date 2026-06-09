@@ -2,7 +2,7 @@ from database import SessionLocal
 import models
 from passlib.context import CryptContext
 
-# Usamos la librería passlib que instalamos en el Nivel 1 para encriptar las contraseñas
+# Usamos la librería passlib para encriptar las contraseñas
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def crear_datos_de_prueba():

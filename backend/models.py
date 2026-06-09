@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Float
+from sqlalchemy import Column, Integer, String, Float, DateTime
 from database import Base
+from datetime import datetime
 
 class User(Base):
     __tablename__ = "users"
@@ -20,3 +21,13 @@ class Product(Base):
     min_stock = Column(Integer, default=5) # Para las alertas de inventario
     price = Column(Float, default=0.0)
     status = Column(String, default="aprobado") # Estados: pendiente, aprobado
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, index=True)          # Quién lo hizo
+    action = Column(String)                         # APROBACIÓN, EDICIÓN, ELIMINACIÓN
+    product_name = Column(String)                   # Producto afectado
+    details = Column(String)                        # Cambios específicos (ej: "Stock: 10 -> 50")
+    timestamp = Column(DateTime, default=datetime.utcnow) # Cuándo ocurrió (UTC)

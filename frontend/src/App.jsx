@@ -3,6 +3,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import ProponerProducto from "./pages/ProponerProducto";
 import EditarProducto from "./pages/EditarProducto";
+import Auditoria from "./pages/Auditoria";
 // Este componente protege las rutas para que nadie entre sin token
 const RutaProtegida = ({ children }) => {
   const token = localStorage.getItem("token");
@@ -27,7 +28,6 @@ function App() {
           }
         />
 
-        {/* ESTA ES LA NUEVA RUTA */}
         <Route
           path="/proponer"
           element={
@@ -42,6 +42,14 @@ function App() {
           element={
             <RutaProtegida>
               <EditarProducto />
+            </RutaProtegida>
+          }
+        />
+        <Route
+          path="/auditoria"
+          element={
+            <RutaProtegida>
+              <Auditoria />
             </RutaProtegida>
           }
         />
