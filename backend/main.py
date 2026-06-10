@@ -5,6 +5,11 @@ from pydantic import BaseModel
 from database import engine, SessionLocal
 from fastapi.middleware.cors import CORSMiddleware
 import models, security
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from fastapi import BackgroundTasks  # <-- Importante para el segundo plano
+import os
 
 # Crear las tablas (si no existen)
 models.Base.metadata.create_all(bind=engine)
@@ -147,21 +152,21 @@ def eliminar_producto(
 
 @app.put("/api/productos/{producto_id}")
 def actualizar_producto(
-    producto_id: int, 
-    producto_actualizado: ProductoNuevo, # Reutilizamos el molde que ya teníamos
-    db: Session = Depends(get_db), 
-    current_user: dict = Depends(security.require_supervisor) # Solo jefes editan
+    producto_id: int,
+    producto_actualizado: ProductoNuevo,
+    background_tasks: BackgroundTasks,  # <-- NUEVO PARÁMETRO AQUÍ
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(security.require_supervisor)
 ):
-    """Actualiza todos los datos de un producto existente"""
+    """Actualiza todos los datos de un producto existente y evalúa el stock crítico"""
     
     producto = db.query(models.Product).filter(models.Product.id == producto_id).first()
     if not producto:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
-    
-    # Armamos el texto del detalle antes de modificar nada
-    detalles_cambio = f"Precio: ${producto.price} -> ${producto_actualizado.price} | Stock: {producto.stock} -> {producto_actualizado.stock}"
         
-    # Actualizamos los campos
+    detalles_cambio = f"Precio: ${producto.price} -> ${producto_actualizado.price} | Stock: {producto.stock} -> {producto_actualizado.stock}"
+    
+    # Aplicamos los cambios en el modelo
     producto.barcode = producto_actualizado.barcode
     producto.name = producto_actualizado.name
     producto.category = producto_actualizado.category
@@ -171,8 +176,8 @@ def actualizar_producto(
     
     db.commit()
     db.refresh(producto)
-
-    # REGISTRO EN BITÁCORA
+    
+    # 1. REGISTRO EN BITÁCORA
     registrar_auditoria(
         db, 
         username=current_user["email"], 
@@ -180,6 +185,16 @@ def actualizar_producto(
         product_name=producto.name, 
         details=detalles_cambio
     )
+    
+    # 2. EVALUACIÓN DEL CENTINELA: ¿El nuevo stock está en nivel crítico?
+    if producto.stock <= producto.min_stock:
+        # Añadimos la tarea al background_tasks para que se ejecute en hilos separados
+        background_tasks.add_task(
+            enviar_correo_alerta, 
+            producto_name=producto.name, 
+            stock_actual=producto.stock, 
+            min_stock=producto.min_stock
+        )
     
     return {"mensaje": "Producto actualizado exitosamente", "producto": producto}
 
@@ -202,3 +217,52 @@ def obtener_logs_auditoria(
     """Retorna el historial completo de la bitácora ordenado del más reciente al más antiguo"""
     logs = db.query(models.AuditLog).order_by(models.AuditLog.timestamp.desc()).all()
     return {"logs": logs}
+
+def enviar_correo_alerta(producto_name: str, stock_actual: int, min_stock: int):
+    """Construye y envía el correo electrónico de alerta por stock crítico"""
+    smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", 587))
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    email_destino = os.getenv("EMAIL_ALERTA_DESTINO")
+
+    # Si falta alguna credencial, cancelamos silenciosamente para no romper el flujo
+    if not all([smtp_user, smtp_password, email_destino]):
+        print("⚠️ Alerta de correo omitida: Credenciales SMTP incompletas en el archivo .env")
+        return
+
+    # Estructura del mensaje
+    msg = MIMEMultipart()
+    msg['From'] = smtp_user
+    msg['To'] = email_destino
+    msg['Subject'] = f"🚨 ALERTA DE STOCK CRÍTICO: {producto_name}"
+
+    cuerpo_mensaje = f"""
+    <html>
+        <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
+            <div style="background-color: #fff; max-width: 600px; margin: 0 auto; padding: 30px; border-radius: 8px; border-top: 4px solid #ef4444;">
+                <h2 style="color: #b91c1c; margin-top: 0;">¡Inventario Crítico Detectado!</h2>
+                <p>El sistema <strong>Inventory Pro</strong> ha registrado un movimiento que deja el siguiente artículo por debajo del umbral mínimo permitido:</p>
+                <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                <p><strong>Producto:</strong> {producto_name}</p>
+                <p><strong>Stock Actual:</strong> <span style="color: #ef4444; font-weight: bold;">{stock_actual} unidades</span></p>
+                <p><strong>Stock Mínimo Permitido:</strong> {min_stock} unidades</p>
+                <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;">
+                <p style="font-size: 12px; color: #6b7280;">Este es un correo automático generado por Inventory Pro de forma segura.</p>
+            </div>
+        </body>
+    </html>
+    """
+    
+    msg.attach(MIMEText(cuerpo_mensaje, 'html'))
+
+    try:
+        # Conexión segura al servidor SMTP
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()  # Cifrado TLS
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_user, email_destino, msg.as_string())
+        server.quit()
+        print(f"📧 Alerta de correo enviada con éxito para el producto: {producto_name}")
+    except Exception as e:
+        print(f"❌ Error al intentar enviar el correo de alerta: {e}")

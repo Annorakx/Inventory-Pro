@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  backend:
+    build: ./backend
+    container_name: inventory_pro_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app # El túnel mágico en vivo
+    env_file:
+      - ./backend/.env # Carga tus credenciales de Gmail
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: inventory_pro_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app # El túnel mágico en vivo
+      - /app/node_modules # Protege la carpeta instalada por Docker
+    environment:
+      - CHOKIDAR_USEPOLLING=true # Obliga a Vite a recargar en Linux
+    depends_on:
+      - backend
+    restart: unless-stopped
